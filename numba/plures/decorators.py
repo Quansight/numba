@@ -1,7 +1,7 @@
 import functools
 import collections.abc
 
-from .ndtypes import Function
+from .ndtypes_wrapper import Function
 from .gufunc import GuFunc
 
 @functools.singledispatch
@@ -29,7 +29,7 @@ def vectorize(fn):
 
     Then, `add` will be a `_gumath.gufunc`.
 
-    You can also past in a list of signatures, instead of just one. 
+    You can also past in a list of signatures, instead of just one.
     """
     return _vecorize_fn(None, fn)
 

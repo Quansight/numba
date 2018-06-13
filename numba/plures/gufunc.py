@@ -3,7 +3,7 @@ from ndtypes import ndt
 
 from .. import jit
 from .llvm import build_kernel_wrapper
-from .ndtypes import Function, DType
+from .ndtypes_wrapper import Function, DType
 
 class GuFunc:
     """
