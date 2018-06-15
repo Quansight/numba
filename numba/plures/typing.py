@@ -134,6 +134,7 @@ def box_xnd(typ, val, c):
     xnd_type = c.pyapi.unserialize(c.pyapi.serialize_object(xnd))
     res = c.builder.call(xnd_from_xnd, [xnd_type, val])
     c.pyapi.decref(xnd_type)
+    c.pyapi.incref(res)
     return res
 
 
@@ -151,6 +152,7 @@ def box_ndt(typ, val, c):
     )
 
     res = c.builder.call(ndt_from_type, [val])
+    c.pyapi.incref(res)
     return res
 
 
