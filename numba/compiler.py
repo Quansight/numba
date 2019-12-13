@@ -19,8 +19,7 @@ from .untyped_passes import (ExtractByteCode, TranslateByteCode, FixupArgs,
                              IRProcessing, DeadBranchPrune,
                              RewriteSemanticConstants, InlineClosureLikes,
                              GenericRewrites, WithLifting, InlineInlinables,
-                             FindLiterallyCalls, MakeFunctionToJitFunction,
-                             LiteralUnroll)
+                             FindLiterallyCalls, MakeFunctionToJitFunction)
 
 from .typed_passes import (NopythonTypeInference, AnnotateTypes,
                            NopythonRewrites, PreParforPass, ParforPass,
@@ -134,7 +133,7 @@ class CompileResult(namedtuple("_CompileResult", CR_FIELDS)):
                  lifted=lifted,
                  typing_error=None,
                  call_helper=None,
-                 metadata=None,  # Do not store, arbitrary & potentially large!
+                 metadata=None, # Do not store, arbitrary and potentially large!
                  reload_init=reload_init,
                  )
         return cr
@@ -350,10 +349,7 @@ class CompilerBase(object):
         pms = self.define_pipelines()
         for pm in pms:
             pipeline_name = pm.pipeline_name
-            func_name = "%s.%s" % (self.state.func_id.modname,
-                                   self.state.func_id.func_qualname)
-
-            event("Pipeline: %s for %s" % (pipeline_name, func_name))
+            event("Pipeline: %s" % pipeline_name)
             self.state.metadata['pipeline_times'] = {pipeline_name:
                                                      pm.exec_times}
             is_final_pipeline = pm == pms[-1]
@@ -444,14 +440,14 @@ class DefaultPassBuilder(object):
             pm.add_pass(GenericRewrites, "nopython rewrites")
             pm.add_pass(RewriteSemanticConstants, "rewrite semantic constants")
             pm.add_pass(DeadBranchPrune, "dead branch pruning")
-
         pm.add_pass(InlineClosureLikes,
                     "inline calls to locally defined closures")
+
         # convert any remaining closures into functions
         pm.add_pass(MakeFunctionToJitFunction,
                     "convert make_function into JIT functions")
         # inline functions that have been determined as inlinable and rerun
-        # branch pruning, this needs to be run after closures are inlined as
+        # branch pruning this needs to be run after closures are inlined as
         # the IR repr of a closure masks call sites if an inlinable is called
         # inside a closure
         pm.add_pass(InlineInlinables, "inline inlinable functions")
@@ -459,7 +455,6 @@ class DefaultPassBuilder(object):
             pm.add_pass(DeadBranchPrune, "dead branch pruning")
 
         pm.add_pass(FindLiterallyCalls, "find literally calls")
-        pm.add_pass(LiteralUnroll, "handles literal_unroll")
 
         # typing
         pm.add_pass(NopythonTypeInference, "nopython frontend")

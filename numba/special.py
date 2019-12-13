@@ -1,8 +1,5 @@
 from __future__ import print_function, division, absolute_import
 
-import sys
-
-from numba.extending import overload
 import numpy as np
 
 from .typing.typeof import typeof
@@ -91,24 +88,6 @@ def literally(obj):
     return obj
 
 
-def literal_unroll(container):
-    from numba.errors import UnsupportedError
-    if sys.version_info[:2] < (3, 6):
-        raise UnsupportedError("literal_unroll is only support in Python > 3.5")
-    return container
-
-
-@overload(literal_unroll)
-def literal_unroll_impl(container):
-    from numba.errors import UnsupportedError
-    if sys.version_info[:2] < (3, 6):
-        raise UnsupportedError("literal_unroll is only support in Python > 3.5")
-
-    def impl(container):
-        return container
-    return impl
-
-
 __all__ = [
     'typeof',
     'prange',
@@ -117,5 +96,4 @@ __all__ = [
     'gdb_breakpoint',
     'gdb_init',
     'literally',
-    'literal_unroll',
 ]

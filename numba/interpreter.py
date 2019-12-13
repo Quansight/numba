@@ -387,7 +387,7 @@ class Interpreter(object):
     def store(self, value, name, redefine=False):
         """
         Store *value* (a Expr or Var instance) into the variable named *name*
-        (a str object). Returns the target variable.
+        (a str object).
         """
         if redefine or self.current_block_offset in self.cfa.backbone:
             rename = not (name in self.code_cellvars)
@@ -399,7 +399,6 @@ class Interpreter(object):
         stmt = ir.Assign(value=value, target=target, loc=self.loc)
         self.current_block.append(stmt)
         self.definitions[target.name].append(value)
-        return target
 
     def get(self, name):
         """
@@ -721,16 +720,7 @@ class Interpreter(object):
 
     def op_LOAD_CONST(self, inst, res):
         value = self.code_consts[inst.arg]
-        if isinstance(value, tuple):
-            st = []
-            for x in value:
-                nm = '$const_%s' % str(x)
-                val_const = ir.Const(x, loc=self.loc)
-                target = self.store(val_const, name=nm, redefine=True)
-                st.append(target)
-            const = ir.Expr.build_tuple(st, loc=self.loc)
-        else:
-            const = ir.Const(value, loc=self.loc)
+        const = ir.Const(value, loc=self.loc)
         self.store(const, res)
 
     def op_LOAD_GLOBAL(self, inst, res):
@@ -844,16 +834,7 @@ class Interpreter(object):
             for inst in self.current_block.body:
                 if isinstance(inst, ir.Assign) and inst.target is names:
                     self.current_block.remove(inst)
-                    # scan up the block looking for the values, remove them
-                    # and find their name strings
-                    named_items = []
-                    for x in inst.value.items:
-                        for y in self.current_block.body[::-1]:
-                            if x == y.target:
-                                self.current_block.remove(y)
-                                named_items.append(y.value.value)
-                                break
-                    keys = named_items
+                    keys = inst.value.value
                     break
 
             nkeys = len(keys)
@@ -893,16 +874,7 @@ class Interpreter(object):
         for inst in self.current_block.body:
             if isinstance(inst, ir.Assign) and inst.target is keyvar:
                 self.current_block.remove(inst)
-                # scan up the block looking for the values, remove them
-                # and find their name strings
-                named_items = []
-                for x in inst.value.items:
-                    for y in self.current_block.body[::-1]:
-                        if x == y.target:
-                            self.current_block.remove(y)
-                            named_items.append(y.value.value)
-                            break
-                keytup = named_items
+                keytup = inst.value.value
                 break
         assert len(keytup) == len(values)
         keyconsts = [ir.Const(value=x, loc=self.loc) for x in keytup]

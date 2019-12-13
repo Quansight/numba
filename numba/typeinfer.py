@@ -392,27 +392,6 @@ class StaticGetItemConstraint(object):
         return self.fallback and self.fallback.get_call_signature()
 
 
-class TypedGetItemConstraint(object):
-    def __init__(self, target, value, dtype, index, loc):
-        self.target = target
-        self.value = value
-        self.dtype = dtype
-        self.index = index
-        self.loc = loc
-
-    def __call__(self, typeinfer):
-        with new_error_context("typing of typed-get-item at {0}", self.loc):
-            typevars = typeinfer.typevars
-            idx_ty = typevars[self.index.name].get()
-            ty = typevars[self.value.name].get()
-            from numba.typing.templates import Signature
-            self.signature = Signature(self.dtype, ty + idx_ty, None)
-            typeinfer.add_type(self.target, self.dtype, loc=self.loc)
-
-    def get_call_signature(self):
-        return self.signature
-
-
 def fold_arg_vars(typevars, args, vararg, kws):
     """
     Fold and resolve the argument variables of a function call.
@@ -645,7 +624,6 @@ class SetItemRefinement(object):
     """A mixin class to provide the common refinement logic in setitem
     and static setitem.
     """
-
     def _refine_target_type(self, typeinfer, targetty, idxty, valty, sig):
         """Refine the target-type given the known index type and value type.
         """
@@ -1010,7 +988,7 @@ class TypeInferer(object):
         if source_constraint is not None:
             source_constraint.refine(self, updated_type)
 
-    def unify(self, raise_errors=True):
+    def unify(self):
         """
         Run the final unification pass over all inferred types, and
         catch imprecise types.
@@ -1027,7 +1005,7 @@ class TypeInferer(object):
                 if offender is not None:
                     if not exhaustive:
                         break
-                    try:  # simple assignment
+                    try: # simple assignment
                         hasattr(offender.value, 'name')
                         offender_value = offender.value.name
                     except (AttributeError, KeyError):
@@ -1061,7 +1039,7 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
                             return list_msg
                         # or might be `foo = list()`
                         elif offender.value.op == 'call':
-                            try:  # assignment involving a call
+                            try: # assignment involving a call
                                 call_name = offender.value.func.name
                                 # find the offender based on the call name
                                 offender = find_offender(call_name)
@@ -1070,21 +1048,17 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
                                         return list_msg
                             except (AttributeError, KeyError):
                                 pass
-            return ""  # no help possible
+            return "" # no help possible
 
         def check_var(name):
             tv = self.typevars[name]
             if not tv.defined:
-                if raise_errors:
-                    offender = find_offender(name)
-                    val = getattr(offender, 'value', 'unknown operation')
-                    loc = getattr(offender, 'loc', ir.unknown_loc)
-                    msg = ("Type of variable '%s' cannot be determined, "
-                           "operation: %s, location: %s")
-                    raise TypingError(msg % (var, val, loc), loc)
-                else:
-                    typdict[var] = types.unknown
-                    return
+                offender = find_offender(name)
+                val = getattr(offender, 'value', 'unknown operation')
+                loc = getattr(offender, 'loc', ir.unknown_loc)
+                msg = ("Type of variable '%s' cannot be determined, operation:"
+                       " %s, location: %s")
+                raise TypingError(msg % (var, val, loc), loc)
             tp = tv.getone()
             if not tp.is_precise():
                 offender = find_offender(name, exhaustive=True)
@@ -1094,12 +1068,8 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
                 loc = getattr(offender, 'loc', ir.unknown_loc)
                 # is this an untyped list? try and provide help
                 extra_msg = diagnose_imprecision(offender)
-                if raise_errors:
-                    raise TypingError(msg % (var, istmp, tp, extra_msg), loc)
-                else:
-                    typdict[var] = types.unknown
-                    return
-            else:  # type is precise, hold it
+                raise TypingError(msg % (var, istmp, tp, extra_msg), loc)
+            else: # type is precise, hold it
                 typdict[var] = tp
 
         # For better error display, check first user-visible vars, then
@@ -1111,68 +1081,26 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
         for var in sorted(temps):
             check_var(var)
 
-        try:
-            retty = self.get_return_type(typdict)
-        except Exception as e:
-            # partial type inference may raise e.g. attribute error if a
-            # constraint has no computable signature, ignore this as needed
-            if raise_errors:
-                raise e
-            else:
-                retty = None
-
-        try:
-            fntys = self.get_function_types(typdict)
-        except Exception as e:
-            # partial type inference may raise e.g. attribute error if a
-            # constraint has no computable signature, ignore this as needed
-            if raise_errors:
-                raise e
-            else:
-                fntys = None
-
+        retty = self.get_return_type(typdict)
+        fntys = self.get_function_types(typdict)
         if self.generator_info:
-            retty = self.get_generator_type(typdict, retty,
-                                            raise_errors=raise_errors)
+            retty = self.get_generator_type(typdict, retty)
 
         self.debug.unify_finished(typdict, retty, fntys)
 
         return typdict, retty, fntys
 
-    def get_generator_type(self, typdict, retty, raise_errors=True):
+    def get_generator_type(self, typdict, retty):
         gi = self.generator_info
         arg_types = [None] * len(self.arg_names)
         for index, name in self.arg_names.items():
             arg_types[index] = typdict[name]
-
-        state_types = None
-        try:
-            state_types = [typdict[var_name] for var_name in gi.state_vars]
-        except KeyError:
-            msg = "Cannot type generator: state variable types cannot be found"
-            if raise_errors:
-                raise TypingError(msg)
-            state_types = [types.unknown for _ in gi.state_vars]
-
-        yield_types = None
-        try:
-            yield_types = [typdict[y.inst.value.name]
-                           for y in gi.get_yield_points()]
-        except KeyError:
-            msg = "Cannot type generator: yield type cannot be found"
-            if raise_errors:
-                raise TypingError(msg)
+        state_types = [typdict[var_name] for var_name in gi.state_vars]
+        yield_types = [typdict[y.inst.value.name]
+                       for y in gi.get_yield_points()]
         if not yield_types:
             msg = "Cannot type generator: it does not yield any value"
-            if raise_errors:
-                raise TypingError(msg)
-            yield_types = [types.unknown for _ in gi.get_yield_points()]
-
-        if not yield_types or all(yield_types) == types.unknown:
-            # unknown yield, probably partial type inference, escape
-            return types.Generator(self.func_id.func, types.unknown, arg_types,
-                                   state_types, has_finalizer=True)
-
+            raise TypingError(msg)
         yield_type = self.context.unify_types(*yield_types)
         if yield_type is None or isinstance(yield_type, types.Optional):
             msg = "Cannot type generator: cannot unify yielded types %s"
@@ -1191,11 +1119,10 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
                     explain_ty.add(types.NoneType('none'))
                 else:
                     explain_ty.add(ty)
-            if raise_errors:
-                raise TypingError("Can't unify yield type from the "
-                                  "following types: %s"
-                                  % ", ".join(sorted(map(str, explain_ty))) +
-                                  "\n\n" + "\n".join(yp_highlights))
+            raise TypingError("Can't unify yield type from the "
+                              "following types: %s"
+                              % ", ".join(sorted(map(str, explain_ty))) +
+                              "\n\n" + "\n".join(yp_highlights))
 
         return types.Generator(self.func_id.func, yield_type, arg_types,
                                state_types, has_finalizer=True)
@@ -1232,7 +1159,6 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
                                     returns[x] = instr
                                     break
 
-                    interped = ""
                     for name, offender in returns.items():
                         loc = getattr(offender, 'loc', ir.unknown_loc)
                         msg = ("Return of: IR name '%s', type '%s', "
@@ -1447,7 +1373,7 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
             else:
                 nm = gvar.name
                 msg = _termcolor.errmsg("Untyped global name '%s':" % nm)
-                msg += " %s"  # interps the actual error
+                msg += " %s" # interps the actual error
 
                 # if the untyped global is a numba internal function then add
                 # to the error message asking if it's been imported.
@@ -1523,14 +1449,6 @@ http://numba.pydata.org/numba-doc/latest/user/troubleshoot.html#my-code-has-an-u
         elif expr.op == 'getitem':
             self.typeof_intrinsic_call(inst, target, operator.getitem,
                                        expr.value, expr.index,)
-        elif expr.op == 'typed_getitem':
-            constraint = TypedGetItemConstraint(target.name, value=expr.value,
-                                                dtype=expr.dtype,
-                                                index=expr.index,
-                                                loc=expr.loc)
-            self.constraints.append(constraint)
-            self.calls.append((inst.value, constraint))
-
         elif expr.op == 'getattr':
             constraint = GetAttrConstraint(target.name, attr=expr.attr,
                                            value=expr.value, loc=inst.loc,

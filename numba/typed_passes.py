@@ -43,8 +43,7 @@ def fallback_context(state, msg):
             raise
 
 
-def type_inference_stage(typingctx, interp, args, return_type, locals={},
-                         raise_errors=True):
+def type_inference_stage(typingctx, interp, args, return_type, locals={}):
     if len(args) != interp.arg_count:
         raise TypeError("Mismatch number of argument types")
 
@@ -64,8 +63,8 @@ def type_inference_stage(typingctx, interp, args, return_type, locals={},
             infer.seed_type(k, v)
 
         infer.build_constraint()
-        infer.propagate(raise_errors=raise_errors)
-        typemap, restype, calltypes = infer.unify(raise_errors=raise_errors)
+        infer.propagate()
+        typemap, restype, calltypes = infer.unify()
 
     # Output all Numba warnings
     warnings.flush()
@@ -73,8 +72,9 @@ def type_inference_stage(typingctx, interp, args, return_type, locals={},
     return typemap, restype, calltypes
 
 
-class BaseTypeInference(FunctionPass):
-    _raise_errors = True
+@register_pass(mutates_CFG=True, analysis_only=False)
+class NopythonTypeInference(FunctionPass):
+    _name = "nopython_type_inference"
 
     def __init__(self):
         FunctionPass.__init__(self)
@@ -91,11 +91,9 @@ class BaseTypeInference(FunctionPass):
                 state.func_ir,
                 state.args,
                 state.return_type,
-                state.locals,
-                raise_errors=self._raise_errors)
+                state.locals)
             state.typemap = typemap
-            if self._raise_errors:
-                state.return_type = return_type
+            state.return_type = return_type
             state.calltypes = calltypes
 
         def legalize_return_type(return_type, interp, targetctx):
@@ -125,33 +123,19 @@ class BaseTypeInference(FunctionPass):
                 for var in retstmts:
                     cast = caststmts.get(var)
                     if cast is None or cast.value.name not in argvars:
-                        if self._raise_errors:
-                            raise TypeError("Only accept returning of array "
-                                            "passed into the function as "
-                                            "argument")
+                        raise TypeError("Only accept returning of array passed "
+                                        "into the function as argument")
 
             elif (isinstance(return_type, types.Function) or
                     isinstance(return_type, types.Phantom)):
-                if self._raise_errors:
-                    msg = "Can't return function object ({}) in nopython mode"
-                    raise TypeError(msg.format(return_type))
+                msg = "Can't return function object ({}) in nopython mode"
+                raise TypeError(msg.format(return_type))
 
         with fallback_context(state, 'Function "%s" has invalid return type'
                               % (state.func_id.func_name,)):
             legalize_return_type(state.return_type, state.func_ir,
                                  state.targetctx)
         return True
-
-
-@register_pass(mutates_CFG=True, analysis_only=False)
-class NopythonTypeInference(BaseTypeInference):
-    _name = "nopython_type_inference"
-
-
-@register_pass(mutates_CFG=True, analysis_only=False)
-class PartialTypeInference(BaseTypeInference):
-    _name = "partial_type_inference"
-    _raise_errors = False
 
 
 @register_pass(mutates_CFG=True, analysis_only=False)
@@ -450,7 +434,7 @@ class InlineOverloads(FunctionPass):
     def run_pass(self, state):
         """Run inlining of overloads
         """
-        if self._DEBUG:
+        if config.DEBUG or self._DEBUG:
             print('before overload inline'.center(80, '-'))
             print(state.func_ir.dump())
             print(''.center(80, '-'))
@@ -475,7 +459,7 @@ class InlineOverloads(FunctionPass):
                             modified = True
                             break  # because block structure changed
 
-        if self._DEBUG:
+        if config.DEBUG or self._DEBUG:
             print('after overload inline'.center(80, '-'))
             print(state.func_ir.dump())
             print(''.center(80, '-'))
@@ -488,7 +472,7 @@ class InlineOverloads(FunctionPass):
             # functions introducing blocks
             state.func_ir.blocks = simplify_CFG(state.func_ir.blocks)
 
-        if self._DEBUG:
+        if config.DEBUG or self._DEBUG:
             print('after overload inline DCE'.center(80, '-'))
             print(state.func_ir.dump())
             print(''.center(80, '-'))

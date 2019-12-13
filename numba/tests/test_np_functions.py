@@ -3560,7 +3560,3 @@ def foo():
         with self.assertTypingError():
             cfunc = jit(nopython=True)(iinfo)
             cfunc(np.float64(7))
-
-
-if __name__ == '__main__':
-    unittest.main()

@@ -707,8 +707,7 @@ class BaseContext(object):
         cav = self.cast(builder, av, at, ty)
         cbv = self.cast(builder, bv, bt, ty)
         fnty = self.typing_context.resolve_value_type(key)
-        # the sig is homogeneous in the unified casted type
-        cmpsig = fnty.get_call_type(self.typing_context, (ty, ty), {})
+        cmpsig = fnty.get_call_type(self.typing_context, argtypes, {})
         cmpfunc = self.get_function(fnty, cmpsig)
         self.add_linking_libs(getattr(cmpfunc, 'libs', ()))
         return cmpfunc(builder, (cav, cbv))
@@ -1125,8 +1124,7 @@ class _wrap_impl(object):
     """
 
     def __init__(self, imp, context, sig):
-        self._callable = _wrap_missing_loc(imp)
-        self._imp = self._callable()
+        self._imp = _wrap_missing_loc(imp)
         self._context = context
         self._sig = sig
 
@@ -1139,7 +1137,8 @@ class _wrap_impl(object):
         return getattr(self._imp, item)
 
     def __repr__(self):
-        return "<wrapped %s>" % repr(self._callable)
+        return "<wrapped %s>" % self._imp
+
 
 def _has_loc(fn):
     """Does function *fn* take ``loc`` argument?
@@ -1148,36 +1147,27 @@ def _has_loc(fn):
     return 'loc' in sig.parameters
 
 
-class _wrap_missing_loc(object):
+def _wrap_missing_loc(fn):
+    """Wrap function for missing ``loc`` keyword argument.
+    Otherwise, return the original *fn*.
+    """
+    if not _has_loc(fn):
+        def wrapper(*args, **kwargs):
+            kwargs.pop('loc')     # drop unused loc
+            return fn(*args, **kwargs)
 
-    def __init__(self, fn):
-        self.func = fn # store this to help with debug
+        # Copy the following attributes from the wrapped.
+        # Following similar implementation as functools.wraps but
+        # ignore attributes if not available (i.e fix py2.7)
+        attrs = '__name__', 'libs'
+        for attr in attrs:
+            try:
+                val = getattr(fn, attr)
+            except AttributeError:
+                pass
+            else:
+                setattr(wrapper, attr, val)
 
-    def __call__(self):
-        """Wrap function for missing ``loc`` keyword argument.
-        Otherwise, return the original *fn*.
-        """
-        fn = self.func
-        if not _has_loc(fn):
-            def wrapper(*args, **kwargs):
-                kwargs.pop('loc')     # drop unused loc
-                return fn(*args, **kwargs)
-
-            # Copy the following attributes from the wrapped.
-            # Following similar implementation as functools.wraps but
-            # ignore attributes if not available (i.e fix py2.7)
-            attrs = '__name__', 'libs'
-            for attr in attrs:
-                try:
-                    val = getattr(fn, attr)
-                except AttributeError:
-                    pass
-                else:
-                    setattr(wrapper, attr, val)
-
-            return wrapper
-        else:
-            return fn
-
-    def __repr__(self):
-        return "<wrapped %s>" % self.func
+        return wrapper
+    else:
+        return fn

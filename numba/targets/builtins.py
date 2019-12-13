@@ -16,9 +16,7 @@ from .imputils import (lower_builtin, lower_getattr, lower_getattr_generic,
                        impl_ret_borrowed, impl_ret_untracked,
                        numba_typeref_ctor)
 from .. import typing, types, cgutils, utils
-from ..extending import overload, intrinsic
-from numba.typeconv import Conversion
-from numba.errors import TypingError
+from ..extending import overload
 
 
 @overload(operator.truth)
@@ -83,23 +81,6 @@ def const_ne_impl(context, builder, sig, args):
     res = ir.Constant(ir.IntType(1), val)
     return impl_ret_untracked(context, builder, sig.return_type, res)
 
-
-def gen_non_eq(val):
-    def none_equality(a, b):
-        a_none = isinstance(a, types.NoneType)
-        b_none = isinstance(b, types.NoneType)
-        if a_none and b_none:
-            def impl(a, b):
-                return val
-            return impl
-        elif a_none ^ b_none:
-            def impl(a, b):
-                return not val
-            return impl
-    return none_equality
-
-overload(operator.eq)(gen_non_eq(True))
-overload(operator.ne)(gen_non_eq(False))
 
 #-------------------------------------------------------------------------------
 
