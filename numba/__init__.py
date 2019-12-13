@@ -71,6 +71,8 @@ __all__ = """
     stencil
     vectorize
     objmode
+    get_num_threads
+    set_num_threads
     """.split() + types.__all__ + errors.__all__
 
 
