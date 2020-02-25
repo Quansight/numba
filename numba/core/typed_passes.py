@@ -347,7 +347,6 @@ class NativeLowering(LoweringPass):
                 lower = lowering.Lower(targetctx, library, fndesc, interp,
                                        metadata=metadata)
                 lower.lower()
-
                 if not flags.no_cpython_wrapper:
                     lower.create_cpython_wrapper(flags.release_gil)
 
