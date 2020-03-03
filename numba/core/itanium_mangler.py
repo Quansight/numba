@@ -158,7 +158,7 @@ def mangle_type_or_value(typ):
     """
     # Handle numba types
     if isinstance(typ, types.Type):
-        if typ in N2C:
+        if typ.determined and typ in N2C:
             return mangle_type_c(N2C[typ])
         else:
             return mangle_templated_ident(*typ.mangling_args)

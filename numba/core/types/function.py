@@ -10,6 +10,32 @@ class FunctionTypeImplBase:
     """Base class for function type implementations.
     """
 
+    def supports(self, signature):
+        """Check if the given signature can be supported by the first-class
+        function type support.
+        """
+        print(f'{type(self).__name__}:supports({signature=})')
+        #return False
+        sig_types = list(signature.args)
+        rtype = signature.return_type
+        if rtype is not None:
+            sig_types.append(rtype) 
+        
+        for typ in sig_types:
+            if isinstance(typ, types.Optional):
+                return False
+            #if isinstance(typ, types.FunctionType):
+            #    return False
+            print(typ, type(typ))
+            #if not isinstance(typ, (types.Number, types.FunctionType, types.Array, types.NoneType, types.Tuple)):
+            #    return False
+        return True
+
+    def unwrap(self):
+        """Return type that disables first-class function type support.
+        """
+        raise NotImplementedError(f'{type(self).__name__}.unwrap()')
+
     def signature(self):
         """Return the signature of the function type.
         """
@@ -26,6 +52,7 @@ class FunctionTypeImplBase:
         for signature in self.signatures():
             if sig == signature:
                 return True
+            print('AAAAAA', sig, signature)
         return False
 
     def get_call_type(self, context, args, kws):
@@ -87,6 +114,7 @@ class DispatcherFunctionTypeImpl(FunctionTypeImplBase):
 
     def __init__(self, dispatcher):
         self.dispatcher = dispatcher
+        assert len(self.dispatcher.overloads) <= 1, (self.dispatcher.py_func.__name__, len(self.dispatcher.overloads),)
 
     @property
     def signature(self):
@@ -95,13 +123,23 @@ class DispatcherFunctionTypeImpl(FunctionTypeImplBase):
             return types.unliteral(cres.signature)
         # return something that is a signature
         mn, mx = utils.get_nargs_range(self.dispatcher.py_func)
-        return types.unknown(*((types.unknown,) * mn))
+        #return types.unknown(*((types.unknown,) * mn))
+        #return types.undefined
+        return types.undefined(*((types.undefined,) * mn))
 
     def has_signatures(self):
         return len(self.dispatcher.overloads) > 0
 
     def signatures(self):
-        for cres in self.dispatcher.overloads.values():
+        try:
+            cres_list = list(self.dispatcher.overloads.values())
+        except KeyError as msg:
+            print(f'BBBBBB: {msg}')
+            cres_list = []
+
+            print((self.dispatcher.overloads.copy()))
+            
+        for cres in cres_list:
             yield types.unliteral(cres.signature)
 
     @property
@@ -123,6 +161,7 @@ class DispatcherFunctionTypeImpl(FunctionTypeImplBase):
         return types.unliteral(sig)
 
     def check_signature(self, sig, compile=False):
+        print(f'check_signature: {sig=}')
         if super(DispatcherFunctionTypeImpl, self).check_signature(
                 sig, compile=compile):
             return True
@@ -130,9 +169,13 @@ class DispatcherFunctionTypeImpl(FunctionTypeImplBase):
             try:
                 self.dispatcher.compile(sig.args)
                 return True
-            except Exception:
+            except Exception as msg:
+                print(f'FAILED TO COMPILE: {msg}')
                 pass
         return False
+
+    def unwrap(self):
+        return types.Dispatcher(self.dispatcher)
 
 
 class FunctionType(Type):
@@ -140,14 +183,76 @@ class FunctionType(Type):
     First-class function type.
     """
 
-    mutable = True  # What is this for?
     cconv = None
+    _hash = None
+    _key = None
+
+    def __new__(cls, impl):
+        print('NEW', cls, impl)
+        obj = Type.__new__(cls)
+        obj.__init__(impl)
+        if obj.determined:
+            return cls._intern(obj)
+        print(obj.__dict__)
+        return obj
+
+    def __getattr__(self, name):
+        if name == '_code':
+            if not self.determined:
+                assert 0, (self, )
+                return -1
+            inst = type(self)._intern(self)
+            self._code = inst._code
+            print('GETATTR', name, ' -> ', inst._code)
+            return self._code
+        if name == 'key':
+            if not self.determined:
+                return types.undefined.key
+            return self.ftype.name
+        if name == 'name':
+            if not self.determined:
+                return types.undefined.name
+            return self.ftype.name
+        if name == 'ftype':
+            sig = self.signature()
+            return FunctionPrototype(sig.return_type, sig.args)
+        raise AttributeError(name)
+
+    def unify(self, context, other):
+        if not self.determined:
+            if other.determined:
+                print('UNIFY', self, other, self.impl)
+                self.impl.check_signature(other.signature(), compile=True)
+                print(self)
+                return other
+
+    def __hash__(self):
+        key = self.key
+        h = hash(key)
+        print(f'HASH[{id(self)}]: {key=} -> {h=}')
+        #assert self.has_signatures()
+        if self._hash is None:
+            self._key = key
+            self._hash = h
+            #if not hasattr(self, '_code'):
+            #    # intern the function type
+            #    inst = type(self)._intern(self)
+            #    self._code = inst._code
+            #    #assert inst is self, (inst, self)
+        else:
+            assert self._hash == h, ((self._hash, self._key), (h, self.key))
+        return h
+
+    @property
+    def determined(self):
+        return self.has_signatures()
 
     def __init__(self, impl):
         self.impl = impl
 
     @staticmethod
     def fromobject(obj):
+        import inspect
         from numba.core.dispatcher import Dispatcher
         from numba.core.ccallback import CFunc
         from numba.core.typing.templates import Signature
@@ -156,11 +261,37 @@ class FunctionType(Type):
         elif isinstance(obj, Signature):
             impl = FunctionTypeImpl(obj)
         elif isinstance(obj, Dispatcher):
-            if obj.targetoptions.get('no_cfunc_wrapper', True):
+            print('fromobject:', obj.targetoptions, inspect.isgeneratorfunction(obj.py_func), obj.py_func, len(obj.overloads), obj._cache)
+            if isinstance(obj._type, FunctionType):
+                return obj._type
+            if obj.targetoptions.get('no_cfunc_wrapper'):
+                return types.Dispatcher(obj)
+            if obj._cache.cache_path:
+                obj.targetoptions['no_cfunc_wrapper'] = True
+                return types.Dispatcher(obj)
+            if 0 and obj.overloads:
+                return types.Dispatcher(obj)
+            if 0 and obj.overloads:
+                for cres in obj.overloads.values():
+                    if cres.library.has_dynamic_globals:
+                        return types.Dispatcher(obj)
+            if inspect.isgeneratorfunction(obj.py_func):
+                obj.targetoptions['no_cfunc_wrapper'] = True
+                return types.Dispatcher(obj)
+            if obj._impl_kind == 'generated':
+                obj.targetoptions['no_cfunc_wrapper'] = True
+                return types.Dispatcher(obj)
+            if obj._compiling_counter:
+                obj.targetoptions['no_cfunc_wrapper'] = True
+                return types.Dispatcher(obj)
+            if 0 and obj.targetoptions.get('no_cfunc_wrapper', True):
                 # first-class function is disabled for the given
                 # dispatcher instance, fallback to default:
                 return types.Dispatcher(obj)
             impl = DispatcherFunctionTypeImpl(obj)
+            typ = FunctionType(impl)
+            obj._type = typ
+            return typ
         elif isinstance(obj, WrapperAddressProtocol):
             impl = FunctionTypeImpl(obj.signature())
         else:
@@ -174,7 +305,7 @@ class FunctionType(Type):
 
     @property
     def key(self):
-        return self.name
+        return self.ftype.name
 
     def has_signatures(self):
         """Return True if function type contains known signatures.
@@ -201,7 +332,7 @@ class FunctionType(Type):
             # Check that the first-class function type implementation
             # supports the given signature.
             if not self.impl.check_signature(sig):
-                raise ValueError(f'{repr(self)} does not support {sig}')
+                raise ValueError(f'[{type(self.impl).__name__}]{repr(self)} does not support {sig}')
         return FunctionPrototype(sig.return_type, sig.args)
 
     def check_signature(self, sig, compile=False):
@@ -222,6 +353,13 @@ class FunctionType(Type):
                 return other.check_signature(self.signature(), compile=compile)
         return False
 
+    def supports(self, signature):
+        """Check if function type can be a first-class function for the given signature.
+        """
+        return self.impl.supports(signature)
+
+    def unwrap(self):
+        return self.impl.unwrap()
 
 class FunctionPrototype(Type):
     """

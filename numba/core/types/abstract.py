@@ -64,7 +64,9 @@ class _TypeMetaclass(ABCMeta):
         the new instance is returned.
         """
         inst = type.__call__(cls, *args, **kwargs)
-        return cls._intern(inst)
+        if inst.determined:
+            return cls._intern(inst)
+        return inst
 
 
 def _type_reconstructor(reconstructor, reconstructor_args, state):
@@ -90,6 +92,9 @@ class Type(object):
     # Rather the type is reflected at the python<->nopython boundary
     reflected = False
 
+    # Undetermined types will not be cached
+    determined = True
+    
     def __init__(self, name):
         self.name = name
 

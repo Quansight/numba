@@ -161,19 +161,31 @@ class CPUContext(BaseContext):
 
     def create_cfunc_wrapper(self, library, fndesc, env, call_helper):
 
+        argtypes = [(ty.type if isinstance(ty, types.Optional) else ty)
+                    for ty in fndesc.argtypes if not isinstance(ty, types.Omitted)]
+        restype = fndesc.restype
+        if isinstance(restype, types.Optional):
+            restype = restype.type
+        print('CREATE CFUNC WRAPPER', f'{fndesc=}')
+        print(f'{argtypes=}')
         wrapper_module = self.create_module("cfunc_wrapper")
-        fnty = self.call_conv.get_function_type(fndesc.restype, fndesc.argtypes)
+
+        fnty = self.call_conv.get_function_type(restype, argtypes)
         wrapper_callee = wrapper_module.add_function(fnty, fndesc.llvm_func_name)
 
-        ll_argtypes = [self.get_value_type(ty) for ty in fndesc.argtypes]
-        ll_return_type = self.get_value_type(fndesc.restype)
+        print(f'{fndesc.llvm_func_name=}')
+        
+        ll_argtypes = [self.get_value_type(ty) for ty in argtypes]
+        ll_return_type = self.get_value_type(restype)
 
+        print(f'{fndesc.llvm_cfunc_wrapper_name=}')
+        
         wrapty = ir.FunctionType(ll_return_type, ll_argtypes)
         wrapfn = wrapper_module.add_function(wrapty, fndesc.llvm_cfunc_wrapper_name)
         builder = ir.IRBuilder(wrapfn.append_basic_block('entry'))
 
         status, out = self.call_conv.call_function(
-            builder, wrapper_callee, fndesc.restype, fndesc.argtypes, wrapfn.args)
+            builder, wrapper_callee, restype, argtypes, wrapfn.args)
 
         # The C wrapper function interface lacks Python/C API. So,
         # when the callee raises an exception, it will be catched and

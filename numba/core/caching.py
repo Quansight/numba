@@ -408,6 +408,7 @@ class CompileResultCacheImpl(_CacheImpl):
         """
         Check cachability of the given compile result.
         """
+        print(cres.fndesc)
         cannot_cache = None
         if self._is_closure:
             cannot_cache = "as it uses outer variables in a closure"

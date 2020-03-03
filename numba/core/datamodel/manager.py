@@ -22,6 +22,10 @@ class DataModelManager(object):
     def lookup(self, fetype):
         """Returns the corresponding datamodel given the frontend-type instance
         """
+        if not fetype.determined:
+            handler = self._handlers[type(fetype)]
+            model = handler(self, fetype)
+            return model
         try:
             return self._cache[fetype]
         except KeyError:

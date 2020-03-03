@@ -129,8 +129,8 @@ def _get_wrapper_address(func, sig):
     for the given signature.
 
     """
-    # print(f'_get_wrapper_address[{func}]({sig=})')
-    if sig.return_type == types.unknown:
+    print(f'_get_wrapper_address[{func}]({sig=})')
+    if sig.return_type == types.undefined:
         # addr==-1 indicates that no implementation is available for
         # cases where automatic type-inference was unsuccesful. For
         # example, the type of unused jit-decorated function arguments
@@ -157,6 +157,7 @@ def _get_wrapper_address(func, sig):
         else:
             wrapper_name = cres.fndesc.llvm_cfunc_wrapper_name
             addr = cres.library.get_pointer_to_function(wrapper_name)
+            print(f'{wrapper_name=}')
     else:
         raise NotImplementedError(
             f'get wrapper address of {type(func)} instance with {sig!r}')
@@ -166,6 +167,8 @@ def _get_wrapper_address(func, sig):
     if addr <= 0 and addr != -1:
         raise ValueError(f'wrapper address of {type(func)} instance must be'
                          f' a positive integer but got {addr}')
+    print(f'{addr=}')
+    #raise
     return addr
 
 

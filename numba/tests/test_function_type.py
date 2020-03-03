@@ -748,23 +748,24 @@ class TestMiscIssues(TestCase):
 
     def test_generators(self):
 
-        @jit(firstclass=True, forceobj=True)
+        @jit #(firstclass=True, forceobj=True)
         def gen(xs):
             for x in xs:
                 x += 1
                 yield x
 
         @jit(forceobj=True)
-        def con(gen_fn, xs):
+        def con_object(gen_fn, xs):
             return [it for it in gen_fn(xs)]
 
-        self.assertEqual(con(gen, (1, 2, 3)), [2, 3, 4])
+        self.assertEqual(con_object(gen, (1, 2, 3)), [2, 3, 4])
+
+        @jit(nopython=True)
+        def con_nopython(gen_fn, xs):
+            return [it for it in gen_fn(xs)]
 
         with self.assertRaises(errors.UnsupportedError) as raises:
-            @jit(firstclass=True, nopython=True)
-            def gen_(xs):
-                yield
-
+            con_nopython(gen, (1, 2, 3))
         self.assertIn(
             'generator as a first-class function type in nopython mode',
             str(raises.exception))

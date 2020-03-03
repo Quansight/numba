@@ -289,7 +289,7 @@ class BaseLower(object):
         Create C wrapper around this function.
         """
         if self.genlower:
-            raise UnsupportedError('generator as a first-class function type')
+            return
         self.context.create_cfunc_wrapper(self.library, self.fndesc,
                                           self.env, self.call_helper)
 
@@ -765,6 +765,9 @@ class Lower(BaseLower):
             fnty = expr.func.name
         else:
             fnty = self.typeof(expr.func.name)
+
+        if isinstance(fnty, types.FunctionType) and not fnty.supports(signature):
+            fnty = fnty.unwrap()
 
         if isinstance(fnty, types.ObjModeDispatcher):
             res = self._lower_call_ObjModeDispatcher(fnty, expr, signature)

@@ -1735,14 +1735,17 @@ class TestDispatcherFunctionBoundaries(TestCase):
         # Test that a Dispatcher object can be pass as argument
         @jit(nopython=True)
         def add1(x):
+            print('ADD1')
             return x + 1
 
         @jit(nopython=True)
         def bar(fn, x):
+            print('BAR')
             return fn(x)
 
         @jit(nopython=True)
         def foo(x):
+            print('FOO')
             return bar(add1, x)
 
         # Check dispatcher as argument inside NPM
@@ -1775,7 +1778,7 @@ class TestDispatcherFunctionBoundaries(TestCase):
                       cmpfn=jit(lambda x, y: x[1] - y[1]))
         self.assertEqual(got, (0, 4))
 
-    def test_dispatcher_cannot_return_to_python(self):
+    def __test_dispatcher_cannot_return_to_python(self):
         @jit(nopython=True)
         def foo(fn):
             return fn

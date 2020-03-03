@@ -148,9 +148,10 @@ def jit(signature_or_function=None, locals={}, target='cpu', cache=False,
 
     options['boundscheck'] = boundscheck
 
-    if options.pop('firstclass', False):
-        # First-class function must have cfunc wrapper enabled
-        options['no_cfunc_wrapper'] = False
+    options.pop('firstclass', False)
+    #if options.pop('firstclass', False):
+    #    # First-class function must have cfunc wrapper enabled
+    #    options['no_cfunc_wrapper'] = False
 
     # Handle signature
     if signature_or_function is None:

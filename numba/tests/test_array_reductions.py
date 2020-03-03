@@ -784,6 +784,7 @@ class TestArrayReductions(MemoryLeakMixin, TestCase):
             yield np.nan
 
         for a in a_variations():
+            print('->', a)
             check(a)
 
     def test_ptp_complex(self):
@@ -929,7 +930,7 @@ class TestArrayReductions(MemoryLeakMixin, TestCase):
                            array_max, array_max_global,
                            array_nanmax, array_nanmin,
                            array_nansum,
-                           ]
+                           ][:2]
 
         # these functions only work in real space as no complex comparison
         # operator is implemented
@@ -939,7 +940,7 @@ class TestArrayReductions(MemoryLeakMixin, TestCase):
         reduction_funcs += [array_nanmean, array_nanstd, array_nanvar]
         reduction_funcs += [array_nanprod]
 
-        dtypes_to_test = [np.int32, np.float32, np.bool_, np.complex64]
+        dtypes_to_test = [np.int32, np.float32, np.bool_, np.complex64][:1]
 
         def install_tests(dtypes, funcs):
             # Install tests on class

@@ -46,3 +46,13 @@ def normalize_signature(sig):
         check_type(ty)
 
     return args, return_type
+
+def is_determined(sig):
+    args, return_type = normalize_signature(sig)
+    if return_type is not None and not return_type.determined:
+        return False
+    for a in args:
+        if not a.determined:
+            return False
+    return True
+

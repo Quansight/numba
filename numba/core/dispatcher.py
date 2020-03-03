@@ -74,7 +74,11 @@ class _FunctionCompiler(object):
                               stararg_handler)
         return self.pysig, args
 
-    def compile(self, args, return_type):
+    def compile(self, args, return_type, cached=True):
+        if not cached:
+            # args or return_type is undetermined
+            return self._compile_core(args, return_type)
+
         status, retval = self._compile_cached(args, return_type)
         if status:
             return retval
@@ -199,7 +203,8 @@ class _DispatcherBase(_dispatcher.Dispatcher):
         self._tm = default_type_manager
 
         # A mapping of signatures to compile results
-        self.overloads = collections.OrderedDict()
+        #self.overloads = collections.OrderedDict()
+        self.overloads = dict()
 
         self.py_func = py_func
         # other parts of Numba assume the old Python 2 name for code object
@@ -280,8 +285,22 @@ class _DispatcherBase(_dispatcher.Dispatcher):
 
     def add_overload(self, cres):
         args = tuple(cres.signature.args)
+        for atypes in self.overloads:
+            print(hash(atypes), id(atypes))
+            if args == atypes:
+                print('ALready in OVERLOADS')
+                print(args in self.overloads, atypes in self.overloads, hash(args), hash(atypes), id(args))
+                for a, b in zip(args, atypes):
+                    print(a, hash(a), hash(b))
+                sys.exit()
+            print(atypes, args, atypes == args)
         sig = [a._code for a in args]
         self._insert(sig, cres.entry_point, cres.objectmode, cres.interpmode)
+        assert args not in self.overloads, (args,)
+        print(f'add_overloads[{len(self.overloads)}]: {args=} {cres.fndesc.llvm_cfunc_wrapper_name=}')
+
+
+        
         self.overloads[args] = cres
 
     def fold_argument_types(self, args, kws):
@@ -756,6 +775,15 @@ class Dispatcher(_DispatcherBase):
         """
         Compiles first-class function arguments on-demand.
         """
+        print(f'_compile_for_args: {self.targetoptions=} {args=} {len(self.overloads)}')
+
+        # check that function arguments are supported as first-class function types
+        if self.targetoptions.get('nopython', False):
+            for value in args:
+                if isinstance(value, Dispatcher) and inspect.isgeneratorfunction(value.py_func):
+                    raise errors.UnsupportedError(
+                        'generator as a first-class function type in nopython mode')
+
         if not self.overloads:
             for value in args:
                 if isinstance(value, (tuple, list)):
@@ -767,8 +795,11 @@ class Dispatcher(_DispatcherBase):
                                 common_sig = vtype.signature()
                             else:
                                 vtype.check_signature(common_sig, compile=True)
-
-        for atypes in self.overloads:
+        try:
+            overloads = list(self.overloads.keys())
+        except KeyError:
+            overloads = []
+        for atypes in overloads:
             if len(atypes) != len(args):
                 continue
             for atype, value in zip(atypes, args):
@@ -784,8 +815,19 @@ class Dispatcher(_DispatcherBase):
     def compile(self, sig):
         if not self._can_compile:
             raise RuntimeError("compilation disabled")
+        if not sigutils.is_determined(sig):
+            args, return_type = sigutils.normalize_signature(sig)
+            cres = self._compiler.compile(args, return_type, cached=False)
+            print(sig, cres.signature)
+            if (sigutils.is_determined(cres.signature)):
+                self.add_overload(cres)
+            return cres.entry_point
+            sys.exit()
+
         # Use counter to track recursion compilation depth
         with self._compiling_counter:
+
+            
             args, return_type = sigutils.normalize_signature(sig)
             # Don't recompile if signature already exists
             existing = self.overloads.get(tuple(args))
@@ -810,6 +852,9 @@ class Dispatcher(_DispatcherBase):
                     return self._compiler.fold_argument_types(args, kws)[1]
                 raise e.bind_fold_arguments(folded)
 
+            print(f'{args=} {return_type=}')
+            #print(cres.library.get_llvm_str())
+            
             self.add_overload(cres)
             self._cache.save_overload(sig, cres)
 
@@ -831,8 +876,11 @@ class Dispatcher(_DispatcherBase):
             try:
                 self.compile(atypes)
             except Exception as msg:
+                print(f'MMMMMMMMMMMMMMMMMM')
                 return
-        return self.overloads[atypes]
+        cres = self.overloads[atypes]
+        print(f'get_compile_result({sig=}) -> {cres.signature=}')
+        return cres
 
     def recompile(self):
         """
